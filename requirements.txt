@@ -1,0 +1,7 @@
+sentence-transformers<4.5.0
+numpy<2
+pandas
+tqdm
+fastapi
+uvicorn
+openai

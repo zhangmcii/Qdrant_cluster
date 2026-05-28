@@ -1,1 +1,7 @@
 .venv/
+qdrant_storage/
+
+*.pyc
+*.npy
+
+startups_demo.json
