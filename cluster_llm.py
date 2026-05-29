@@ -1,5 +1,7 @@
 """开发一个科幻小说搜索引擎。"""
 
+import os
+
 from qdrant_client import QdrantClient, models
 from config import documents
 from openai import OpenAI
@@ -90,7 +92,7 @@ class LLM_model:
     def __init__(self, results, query):
         context = "\n".join([r.payload["description"] for r in results])
         print(f"context:{context}")
-        api_key = "sk-5d9e177506e24841b744d04d7c196051"
+        api_key = os.getenv("DEEPSEEK_API_KEY")
         self.prompt = f"""
                     请基于以下资料回答问题。
 
