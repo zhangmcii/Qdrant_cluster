@@ -4,13 +4,14 @@
   运行： python rag/_rag.py
 """
 
+import json
 import os
 
+import requests
 from langchain_text_splitters import RecursiveCharacterTextSplitter, MarkdownHeaderTextSplitter
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, PointStruct, VectorParams
 from sentence_transformers import SentenceTransformer
-from openai import OpenAI
 import numpy as np
 from data import text
 
@@ -19,6 +20,9 @@ COLLECTION_NAME = "my_md"
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "deepseek-r1:1.5b")
+OLLAMA_READ_TIMEOUT = int(os.getenv("OLLAMA_READ_TIMEOUT", "300"))
 THRESHOLD = 0.9
 
 class Index:
@@ -115,13 +119,6 @@ class Rag:
         self.collection_name = COLLECTION_NAME
         self.model = SentenceTransformer(EMBEDDING_MODEL, device="cpu")
         self.qdrant_client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
-        self.api_key = os.getenv("DEEPSEEK_API_KEY")
-        self.llm_client = None
-        if self.api_key:
-            self.llm_client = OpenAI(
-                api_key=self.api_key,
-                base_url="https://api.deepseek.com",
-            )
         self.query_text = query_text
         self.context = ""
 
@@ -175,20 +172,41 @@ class Rag:
 
     def chat(self):
         if not self.context:
-            return
-            # raise ValueError("请先执行 retrieve()，拿到上下文后再调用 chat()。")
-        if not self.llm_client:
-            raise ValueError("未设置 DEEPSEEK_API_KEY，无法调用生成模型。")
+            raise ValueError("请先执行 retrieve()，拿到上下文后再调用 chat()。")
 
         prompt = self.build_prompt()
-        response = self.llm_client.chat.completions.create(
-            model="deepseek-chat",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.3,
+        response = requests.post(
+            f"{OLLAMA_URL}/api/generate",
+            json={
+                "model": OLLAMA_MODEL,
+                "prompt": prompt,
+                "stream": True,
+                "options": {
+                    "temperature": 0.3,
+                },
+            },
+            stream=True,
+            timeout=(5, OLLAMA_READ_TIMEOUT),
         )
+        response.raise_for_status()
 
-        print("\n=== LLM 回答 ===")
-        print(response.choices[0].message.content)
+        print("\n=== Ollama 回答 ===")
+        chunks = []
+        for line in response.iter_lines(decode_unicode=True):
+            if not line:
+                continue
+
+            data = json.loads(line)
+            chunk = data.get("response", "")
+            if chunk:
+                print(chunk, end="", flush=True)
+                chunks.append(chunk)
+            if data.get("done"):
+                break
+
+        print()
+        answer = "".join(chunks)
+        return answer
 
 
 if __name__ == "__main__":
@@ -196,8 +214,9 @@ if __name__ == "__main__":
     # index = Index()
     # index.index()
 
-    query = "接口响应速度"
+    query = "小丸子"
     print(f"query:{query}")
+    
     # 检索生成
     rag = Rag(query)
     results = rag.retrieve()
